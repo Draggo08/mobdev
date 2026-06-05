@@ -6,6 +6,7 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
+import io.github.mobdev.R
 import io.github.mobdev.api.ImageUrl
 import io.github.mobdev.data.ChatMessage
 import io.github.mobdev.data.MessageData
@@ -57,7 +58,11 @@ class MessagesAdapter(
     ) : RecyclerView.ViewHolder(binding.root) {
         fun bind(item: MessageListItem.TextItem) {
             binding.messageAuthor.text = item.message.from
-            binding.messageText.text = item.text
+            binding.messageText.text = if (item.message.id < 0) {
+                binding.root.context.getString(R.string.message_pending) + "\n" + item.text
+            } else {
+                item.text
+            }
         }
     }
 

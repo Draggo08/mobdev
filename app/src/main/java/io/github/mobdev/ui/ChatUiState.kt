@@ -23,4 +23,5 @@ data class ChatUiState(
     val skipLoginScreen: Boolean = false,
     val channelsLoaded: Boolean = false,
     val messagesLoadedForChannel: String? = null,
+    val isOnline: Boolean = true,
 )

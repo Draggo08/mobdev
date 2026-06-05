@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -47,7 +48,10 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
     implementation(libs.androidx.recyclerview)
+    implementation(libs.androidx.room.ktx)
+    implementation(libs.androidx.room.runtime)
     implementation(libs.coil)
+    ksp(libs.androidx.room.compiler)
     implementation(libs.material)
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)

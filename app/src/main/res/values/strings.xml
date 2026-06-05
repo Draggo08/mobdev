@@ -16,4 +16,6 @@
     <string name="error_invalid_credentials">Неверный логин / пароль</string>
     <string name="error_session_expired">Сессия истекла, войдите снова</string>
     <string name="error_network">Ошибка сети</string>
+    <string name="offline_banner">Нет сети — показаны сохранённые данные</string>
+    <string name="message_pending">Отправится при появлении сети</string>
 </resources>

@@ -79,6 +79,7 @@ class MessagesFragment : Fragment() {
                 viewModel.uiState.collect { state ->
                     isLoadingMore = state.isLoadingMore
                     binding.channelTitle.text = state.selectedChannel.orEmpty()
+                    binding.offlineBanner.isVisible = !state.isOnline
                     binding.btnBackToChats.isVisible =
                         resources.configuration.orientation != Configuration.ORIENTATION_LANDSCAPE
                     val bottomId = state.messages.lastOrNull()?.id

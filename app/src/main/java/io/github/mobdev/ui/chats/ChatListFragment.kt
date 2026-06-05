@@ -53,6 +53,7 @@ class ChatListFragment : Fragment() {
                         ChannelItem(name, name == state.selectedChannel)
                     }
                     adapter.submitList(items)
+                    binding.offlineBanner.isVisible = !state.isOnline
                     binding.progress.isVisible = state.isLoading && state.channels.isEmpty()
                     binding.emptyView.isVisible = !state.isLoading && state.channels.isEmpty()
                 }
