@@ -1,28 +1,35 @@
 package io.github.mobdev
 
-import android.Manifest
-import android.content.Intent
-import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.os.Bundle
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.OnBackPressedCallback
+import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
-import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.core.view.isVisible
+import androidx.fragment.app.Fragment
+import androidx.fragment.app.commit
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import io.github.mobdev.R
 import io.github.mobdev.databinding.ActivityMainBinding
+import io.github.mobdev.ui.AppScreen
+import io.github.mobdev.ui.ChatUiState
+import io.github.mobdev.ui.ChatViewModel
+import io.github.mobdev.ui.SelectChatFragment
+import io.github.mobdev.ui.chats.ChatListFragment
+import io.github.mobdev.ui.image.ImageFragment
+import io.github.mobdev.ui.login.LoginFragment
+import io.github.mobdev.ui.messages.MessagesFragment
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
-    private lateinit var adapter: ContactsAdapter
-
-    private val permissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        if (granted) {
-            loadContacts()
-        } else {
-            showPermissionRequired()
-        }
+    private val viewModel: ChatViewModel by viewModels {
+        ViewModelProvider.AndroidViewModelFactory.getInstance(application)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -30,72 +37,123 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        setSupportActionBar(binding.toolbar)
-
-        adapter = ContactsAdapter { contact ->
-            val intent = Intent(this, ContactDetailActivity::class.java).apply {
-                putExtra(ContactDetailActivity.EXTRA_CONTACT, contact)
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                handleBack()
             }
-            startActivity(intent)
-        }
+        })
 
-        binding.contactsList.layoutManager = LinearLayoutManager(this)
-        binding.contactsList.adapter = adapter
-
-        binding.btnGrant.setOnClickListener { requestContactsPermission() }
-
-        binding.swipeRefresh.setOnRefreshListener {
-            if (hasContactsPermission()) {
-                loadContacts()
-            } else {
-                binding.swipeRefresh.isRefreshing = false
-                showPermissionRequired()
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.uiState.collect { state ->
+                    binding.loadingOverlay.isVisible =
+                        state.skipLoginScreen && state.isLoading &&
+                        (state.screen == AppScreen.LOGIN || !state.channelsLoaded)
+                    render(state)
+                    state.errorDialogMessage?.let { message ->
+                        showErrorDialog(message)
+                        viewModel.dismissError()
+                    }
+                }
             }
         }
-
-        updateScreen()
     }
 
-    override fun onResume() {
-        super.onResume()
-        updateScreen()
-    }
-
-    private fun updateScreen() {
-        if (hasContactsPermission()) {
-            loadContacts()
+    private fun render(state: ChatUiState) {
+        if (isLandscape()) {
+            renderLandscape(state)
         } else {
-            showPermissionRequired()
+            renderPortrait(state)
         }
     }
 
-    private fun hasContactsPermission(): Boolean =
-        ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CONTACTS) ==
-            PackageManager.PERMISSION_GRANTED
+    private fun renderPortrait(state: ChatUiState) {
+        binding.landscapeContainer.isVisible = false
+        binding.portraitContainer.isVisible = true
 
-    private fun requestContactsPermission() {
-        permissionLauncher.launch(Manifest.permission.READ_CONTACTS)
+        val fragment = when (state.screen) {
+            AppScreen.LOGIN -> if (state.skipLoginScreen && state.isLoading) null else LoginFragment()
+            AppScreen.CHATS -> ChatListFragment()
+            AppScreen.MESSAGES -> MessagesFragment()
+            AppScreen.IMAGE -> ImageFragment()
+        }
+
+        if (fragment != null) {
+            showFragment(binding.portraitContainer.id, fragment, PORTRAIT_TAG)
+        } else {
+            clearFragment(binding.portraitContainer.id)
+        }
     }
 
-    private fun showPermissionRequired() {
-        binding.swipeRefresh.isRefreshing = false
-        binding.permissionBlock.visibility = android.view.View.VISIBLE
-        binding.contactsList.visibility = android.view.View.GONE
-        binding.emptyView.visibility = android.view.View.GONE
+    private fun renderLandscape(state: ChatUiState) {
+        binding.portraitContainer.isVisible = false
+        binding.landscapeContainer.isVisible = true
+
+        if (state.screen == AppScreen.LOGIN && !state.skipLoginScreen) {
+            binding.landscapeFullContainer.isVisible = true
+            binding.landscapeSplit.isVisible = false
+            showFragment(binding.landscapeFullContainer.id, LoginFragment(), LANDSCAPE_LOGIN_TAG)
+            return
+        }
+
+        if (state.skipLoginScreen && state.isLoading && !state.channelsLoaded) {
+            binding.landscapeFullContainer.isVisible = false
+            binding.landscapeSplit.isVisible = false
+            clearFragment(binding.landscapeFullContainer.id)
+            return
+        }
+
+        binding.landscapeFullContainer.isVisible = false
+        binding.landscapeSplit.isVisible = true
+        clearFragment(binding.landscapeFullContainer.id)
+        showFragment(binding.chatListContainer.id, ChatListFragment(), CHAT_LIST_TAG)
+
+        val detailFragment: Fragment = when {
+            state.screen == AppScreen.IMAGE -> ImageFragment()
+            state.selectedChannel != null -> MessagesFragment()
+            else -> SelectChatFragment()
+        }
+        showFragment(binding.messagesContainer.id, detailFragment, MESSAGES_TAG)
     }
 
-    private fun loadContacts() {
-        binding.permissionBlock.visibility = android.view.View.GONE
-        binding.contactsList.visibility = android.view.View.VISIBLE
+    private fun showFragment(containerId: Int, fragment: Fragment, tag: String) {
+        val current = supportFragmentManager.findFragmentByTag(tag)
+        if (current != null && current::class == fragment::class) return
+        supportFragmentManager.commit {
+            replace(containerId, fragment, tag)
+        }
+    }
 
-        val contacts = fetchAllContacts()
-        adapter.submitList(contacts)
-        binding.swipeRefresh.isRefreshing = false
+    private fun clearFragment(containerId: Int) {
+        supportFragmentManager.findFragmentById(containerId)?.let { fragment ->
+            supportFragmentManager.commit { remove(fragment) }
+        }
+    }
 
-        val isEmpty = contacts.isEmpty()
-        binding.contactsList.visibility =
-            if (isEmpty) android.view.View.GONE else android.view.View.VISIBLE
-        binding.emptyView.visibility =
-            if (isEmpty) android.view.View.VISIBLE else android.view.View.GONE
+    private fun handleBack() {
+        val state = viewModel.uiState.value
+        when {
+            state.screen == AppScreen.IMAGE -> viewModel.closeImage()
+            isLandscape() && state.selectedChannel != null -> viewModel.closeChatInLandscape()
+            !isLandscape() && state.screen == AppScreen.MESSAGES -> viewModel.navigateToChats()
+            else -> finish()
+        }
+    }
+
+    private fun showErrorDialog(message: String) {
+        AlertDialog.Builder(this)
+            .setMessage(message)
+            .setPositiveButton(R.string.ok, null)
+            .show()
+    }
+
+    private fun isLandscape(): Boolean =
+        resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+    companion object {
+        private const val PORTRAIT_TAG = "portrait"
+        private const val CHAT_LIST_TAG = "chat_list"
+        private const val MESSAGES_TAG = "messages"
+        private const val LANDSCAPE_LOGIN_TAG = "landscape_login"
     }
 }
